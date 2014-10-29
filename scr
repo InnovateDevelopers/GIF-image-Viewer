@@ -1,0 +1,220 @@
+package com.androidqa;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+
+import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Movie;
+import android.util.AttributeSet;
+import android.util.Log;
+import android.view.GestureDetector;
+import android.view.GestureDetector.SimpleOnGestureListener;
+import android.view.MotionEvent;
+import android.view.View;
+
+public class AnimationView extends View
+{
+	private Movie mMovie;
+	private long mMovieStart;
+	private static final boolean DECODE_STREAM = true;
+	private static final int NUM_PAGES = 5;
+
+
+	/*private static int drawableArray[] = { R.drawable.naailde_page_0_a_fr_, R.drawable.naailde_page_1_a_fr_ , 
+		R.drawable.naailde_page_2_a_fr_, R.drawable.naailde_page_3_a_fr_,R.drawable.naailde_page_4_a_fr_,
+		R.drawable.naailde_page_5_a_fr_, R.drawable.naailde_page_6_a_fr_  };*/
+	private int index = 0;
+
+	private static final int SWIPE_MIN_DISTANCE = 60;
+	private static final int SWIPE_MAX_OFF_PATH = 250;
+	private static final int SWIPE_THRESHOLD_VELOCITY = 200;
+	private GestureDetector gestureDetector;
+	public static Context mContext;
+	private static int[] drawableArray;
+
+	private static byte[] streamToBytes(InputStream is)
+	{
+
+		ByteArrayOutputStream os = new ByteArrayOutputStream(1024);
+		byte[] buffer = new byte[1024];
+		int len;
+		try
+		{
+			while ((len = is.read(buffer)) >= 0)
+			{
+				os.write(buffer, 0, len);
+			}
+		}
+		catch (java.io.IOException e)
+		{
+		}
+		return os.toByteArray();
+	}
+
+	public AnimationView(final Context context, AttributeSet attrs)
+	{
+		super(context, attrs);
+		drawableArray  = new int[300];
+		for (int i = 0; i <200; i++)
+		{
+			String name = "naailde_page_"+i+"_a_fr_";
+			int resID = context.getResources().getIdentifier(name , "drawable", context.getPackageName());
+			drawableArray[i] = resID;
+		}
+		setFocusable(true);
+
+		mContext = context;
+
+		java.io.InputStream is;
+
+		is = context.getResources().openRawResource(drawableArray[index]);
+
+		if (DECODE_STREAM)
+		{
+			mMovie = Movie.decodeStream(is);
+		}
+		else
+		{
+			byte[] array = streamToBytes(is);
+			mMovie = Movie.decodeByteArray(array, 0, array.length);
+
+		}
+		/*
+		new Timer().scheduleAtFixedRate(new TimerTask()
+		{
+
+			synchronized public void run()
+			{
+				java.io.InputStream is;
+
+				if (index > drawableArray.length - 1)
+					index = 0;
+				is = context.getResources().openRawResource(drawableArray[index++]);
+
+				if (DECODE_STREAM)
+				{
+					mMovie = Movie.decodeStream(is);
+				}
+				else
+				{
+					byte[] array = streamToBytes(is);
+					mMovie = Movie.decodeByteArray(array, 0, array.length);
+				}
+				((Activity) context).runOnUiThread(new Runnable()
+				{
+
+					@Override
+					public void run()
+					{
+						invalidate();
+					}
+				});
+
+			}
+
+		}, 0, 3000);*/
+
+		// Gesture detection
+		gestureDetector = new GestureDetector(context, new MyGestureDetector());
+	}
+
+	@Override
+	public boolean onTouchEvent(MotionEvent event)
+	{
+		return gestureDetector.onTouchEvent(event);
+	}
+
+	class MyGestureDetector extends SimpleOnGestureListener
+	{
+		@Override
+		public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY)
+		{
+			try
+			{
+				if (Math.abs(e1.getY() - e2.getY()) > SWIPE_MAX_OFF_PATH)
+					return false;
+				// right to left swipe
+				if (e1.getX() - e2.getX() > SWIPE_MIN_DISTANCE && Math.abs(velocityX) > SWIPE_THRESHOLD_VELOCITY)
+				{
+					//					Toast.makeText(SelectFilterActivity.this, "Left Swipe", Toast.LENGTH_SHORT).show();
+					slideImage(true);
+				}
+				else
+					if (e2.getX() - e1.getX() > SWIPE_MIN_DISTANCE && Math.abs(velocityX) > SWIPE_THRESHOLD_VELOCITY)
+					{
+						//						Toast.makeText(SelectFilterActivity.this, "Right Swipe", Toast.LENGTH_SHORT).show();	
+
+
+
+						slideImage(false);
+					}
+			}
+			catch (Exception e)
+			{
+				// nothing
+			}
+			return false;
+		}
+
+		private void slideImage(boolean b)
+		{
+			InputStream is = null;
+			if (b)
+			{
+				index++;
+				if (index > drawableArray.length - 1)
+					index = 0;
+				is = mContext.getResources().openRawResource(drawableArray[index]);
+			}
+			else
+			{
+				index--;
+				if (index < 0)
+					index = drawableArray.length - 1;
+				is = mContext.getResources().openRawResource(drawableArray[index]);
+
+			}
+			if (DECODE_STREAM)
+			{
+				mMovie = Movie.decodeStream(is);
+			}
+			else
+			{
+				byte[] array = streamToBytes(is);
+				mMovie = Movie.decodeByteArray(array, 0, array.length);
+			}
+			invalidate();
+		}
+
+		@Override
+		public boolean onDown(MotionEvent e)
+		{
+			return true;
+		}
+	}
+
+	@Override
+	public void onDraw(Canvas canvas)
+	{
+		long now = android.os.SystemClock.uptimeMillis();
+		if (mMovieStart == 0)
+		{ // first time
+			mMovieStart = now;
+		}
+		if (mMovie != null)
+		{
+			int dur = mMovie.duration();
+			if (dur == 0)
+			{
+				dur = 3000;
+			}
+			int relTime = (int) ((now - mMovieStart) % dur);
+			Log.d("", "real time :: " + relTime);
+			mMovie.setTime(relTime);
+			canvas.scale(1.75f, 1.85f);
+			mMovie.draw(canvas, 10, 10);
+			invalidate();
+		}
+	}
+}
